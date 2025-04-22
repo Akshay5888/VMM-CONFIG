@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VMM Configuration Builder</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background: #007619;
+      color: white;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header-title {
+      flex: 1;
+      text-align: center;
+      font-size: 25px;
+      font-weight: bold;
+      padding: 5px;
+    }
+    .generate-btn {
+      background: #00bcd4;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 4px;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .generate-btn:hover {
+      background: #0097a7;
+    }
+    main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 100px;
+      background: #f3f3f3;
+      padding: 10px;
+      border-right: 1px solid #ccc;
+    }
+    .sidebar .icon-container {
+      margin-bottom: 20px;
+      cursor: grab;
+      text-align: center;
+    }
+    .sidebar img {
+      width: 50px;
+      height: 50px;
+    }
+    .canvas {
+      flex: 1;
+      position: relative;
+      background: #fff;
+      overflow: hidden;
+    }
+    .node {
+      position: absolute;
+      text-align: center;
+      width: 90px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .node img {
+      width: 50px;
+      height: 50px;
+    }
+    .node select, .node label {
+      font-size: 10px;
+      margin-top: 2px;
+    }
+    svg {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+    svg line:hover {
+      stroke: red;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-title">VMM Configuration Builder</div>
+    <button class="generate-btn" onclick="generateConfig()">Generate VMM Config</button>
+  </header>
+
+  <main>
+    <div class="sidebar">
+      <div class="header-title">Nodes</div><br>
+      <div class="icon-container" draggable="true" ondragstart="drag(event)" data-type="vMX">
+        <img src="https://img.icons8.com/?size=100&id=63694&format=png&color=000000" alt="vMX">
+        <p>vMX</p>
+      </div>
+      <div class="icon-container" draggable="true" ondragstart="drag(event)" data-type="vQFX">
+        <img src="https://img.icons8.com/?size=100&id=13061&format=png&color=000000" alt="vQFX">
+        <p>vQFX</p>
+      </div>
+    </div>
+    <div class="canvas" id="canvas" ondragover="event.preventDefault()" ondrop="drop(event)">
+      <svg id="svgCanvas"></svg>
+    </div>
+  </main>
+
+  <script>
+    let draggedType = null;
+    let nodeId = 0;
+    let vMXCount = 0;
+    let vQFXCount = 0;
+    let privateLinkCounter = 10;
+    let interfaceMap = {};
+    let selectedNode = null;
+    const nodes = [];
+    const links = [];
+
+    function drag(e) {
+      draggedType = e.target.closest('[draggable]').dataset.type;
+    }
+
+    function drop(e) {
+      e.preventDefault();
+      if (draggedType) {
+        createNode(e.offsetX, e.offsetY, draggedType);
+        draggedType = null;
+      }
+    }
+
+    function createNode(x, y, type) {
+      const canvas = document.getElementById('canvas');
+      const id = `node_${nodeId++}`;
+      const name = type === "vMX" ? `MX-DCGW-${vMXCount + 1}` : `vQFX-${vQFXCount + 1}`;
+      if (type === "vMX") vMXCount++; else vQFXCount++;
+
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.id = id;
+      node.dataset.type = type;
+      node.dataset.label = name;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+
+      const img = document.createElement('img');
+      img.src = type === "vMX"
+        ? 'https://img.icons8.com/?size=100&id=63694&format=png&color=000000'
+        : 'https://img.icons8.com/?size=100&id=13061&format=png&color=000000';
+
+      const label = document.createElement('p');
+      label.contentEditable = true;
+      label.spellcheck = false;
+      label.innerText = name;
+      label.style.margin = '5px 0 0';
+      label.style.outline = 'none';
+
+      node.appendChild(img);
+      node.appendChild(label);
+
+      if (type === "vMX") {
+        const platformSelector = document.createElement('select');
+        platformSelector.innerHTML = `
+          <option value="33">MX480</option>
+          <option value="48">MX240</option>
+          <option value="21">MX960</option>
+        `;
+        platformSelector.dataset.role = "platform";
+        platformSelector.style.marginTop = '2px';
+        node.appendChild(platformSelector);
+
+        const reToggle = document.createElement('label');
+        reToggle.innerHTML = '<input type="checkbox" data-role="dual-re"> Dual RE';
+        node.appendChild(reToggle);
+
+        const fpcCountInput = document.createElement('select');
+        fpcCountInput.dataset.role = "fpc-count";
+        fpcCountInput.innerHTML = '<option value="1">1 FPC</option><option value="2">2 FPCs</option><option value="3">3 FPCs</option><option value="4">4 FPCs</option>';
+        fpcCountInput.style.marginTop = '2px';
+        node.appendChild(fpcCountInput);
+      }
+
+      canvas.appendChild(node);
+      nodes.push({ id, name, type });
+      interfaceMap[name] = 0;
+
+      let isDragging = false;
+      let shiftX, shiftY;
+
+      node.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.target.contentEditable === "true") return;
+        const rect = node.getBoundingClientRect();
+        shiftX = e.clientX - rect.left;
+        shiftY = e.clientY - rect.top;
+        isDragging = false;
+
+        const onMouseMove = (event) => {
+          isDragging = true;
+          node.style.left = `${event.clientX - shiftX - canvas.getBoundingClientRect().left}px`;
+          node.style.top = `${event.clientY - shiftY - canvas.getBoundingClientRect().top}px`;
+          updateLines();
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+
+          if (!isDragging && selectedNode && selectedNode !== node) {
+            const from = selectedNode;
+            const to = node;
+            const label = `private${privateLinkCounter++}`;
+            const fromName = from.querySelector("p").innerText;
+            const toName = to.querySelector("p").innerText;
+
+            const fromFPC = parseInt(prompt(`Enter FPC index for ${fromName} (e.g., 0, 1, 2):`, "0")) || 0;
+            const toFPC = parseInt(prompt(`Enter FPC index for ${toName} (e.g., 0, 1, 2):`, "0")) || 0;
+            const fromInt = fromFPC * 10 + (interfaceMap[fromName] % 10);
+            const toInt = toFPC * 10 + (interfaceMap[toName] % 10);
+
+            links.push({ from: fromName, to: toName, label, fromInt, toInt });
+            drawLine(from, to, label);
+            selectedNode = null;
+          } else {
+            selectedNode = node;
+          }
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    function drawLine(fromNode, toNode) {
+      const svg = document.getElementById('svgCanvas');
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.dataset.from = fromNode.id;
+      line.dataset.to = toNode.id;
+      line.setAttribute('stroke', 'black');
+      line.setAttribute('stroke-width', '2');
+      svg.appendChild(line);
+      updateLines();
+    }
+
+    function updateLines() {
+      const svg = document.getElementById('svgCanvas');
+      const canvasRect = document.getElementById('canvas').getBoundingClientRect();
+      const lines = svg.querySelectorAll('line');
+
+      lines.forEach(line => {
+        const fromNode = document.getElementById(line.dataset.from);
+        const toNode = document.getElementById(line.dataset.to);
+        if (!fromNode || !toNode) return;
+        const fromRect = fromNode.getBoundingClientRect();
+        const toRect = toNode.getBoundingClientRect();
+
+        line.setAttribute('x1', fromRect.left + fromRect.width / 2 - canvasRect.left);
+        line.setAttribute('y1', fromRect.top + fromRect.height / 2 - canvasRect.top);
+        line.setAttribute('x2', toRect.left + toRect.width / 2 - canvasRect.left);
+        line.setAttribute('y2', toRect.top + toRect.height / 2 - canvasRect.top);
+      });
+    }
+
+    function generateConfig() {
+      let config = "#define VMX_PHASE 3\n";
+      config += '#include "/vmm/data/user_disks/vmxc/common.vmx.p3.defs"\n';
+      config += '#include "/vmm/bin/common.defs"\n';
+      config += '#define VMX_DISK1 basedisk "/vmm/data/user_disks/apadwal/evpn-vxlan/junos-virtual-x86-64-22.4R2.2.vmdk";\n';
+      config += "\nTOPOLOGY_START(vmx_topology)\n";
+
+      nodes.forEach((node, index) => {
+        if (node.type !== 'vMX') return;
+
+        const platformEl = document.querySelector(`#${node.id} select[data-role="platform"]`);
+        const reToggleEl = document.querySelector(`#${node.id} input[data-role="dual-re"]`);
+        const fpcCountEl = document.querySelector(`#${node.id} select[data-role="fpc-count"]`);
+
+        const platformI2C = platformEl ? platformEl.value : 33;
+        const hasDualRE = reToggleEl?.checked;
+        const fpcCount = fpcCountEl ? parseInt(fpcCountEl.value) : 1;
+
+        config += `\n#define VMX_CHASSIS_I2CID ${platformI2C} // Platform-specific I2CID\n`;
+        config += `#define VMX_CHASSIS_NAME ${node.name}\n\n`;
+        config += `VMX_CHASSIS_START()\n`;
+
+        config += `    VMX_RE_START(${node.name}, 0)\n`;
+        config += `        VMX_RE_INSTANCE(${node.name}, VMX_DISK1, VMX_RE_I2CID, 0)\n`;
+        config += `    VMX_RE_END\n\n`;
+
+        if (hasDualRE) {
+          config += `    VMX_RE_START(${node.name}_RE1, 1)\n`;
+          config += `        VMX_RE_INSTANCE(${node.name}_RE1, VMX_DISK1, VMX_RE_I2CID, 1)\n`;
+          config += `    VMX_RE_END\n\n`;
+        }
+
+        for (let fpc = 0; fpc < fpcCount; fpc++) {
+          config += `    VMX_MPC_START(${node.name}_MPC${fpc}, ${fpc})\n`;
+          config += `        VMX_MPC_INSTANCE(${node.name}_MPC${fpc}, VMX_DISK1, VMX_MPC_I2CID, ${fpc})\n`;
+
+          links.forEach(link => {
+            if (link.from === node.name && Math.floor(link.fromInt / 10) === fpc) {
+              config += `        VMX_CONNECT(XE(${fpc},0,${link.fromInt % 10}), ${link.label})\n`;
+            }
+            if (link.to === node.name && Math.floor(link.toInt / 10) === fpc) {
+              config += `        VMX_CONNECT(XE(${fpc},0,${link.toInt % 10}), ${link.label})\n`;
+            }
+          });
+
+          config += `    VMX_MPC_END\n`;
+        }
+
+        config += `VMX_CHASSIS_END\n`;
+
+        if (index !== nodes.length - 1) {
+          config += `\n#undef VMX_CHASSIS_I2CID\n#undef VMX_CHASSIS_NAME\n`;
+        }
+      });
+
+      config += "\nTOPOLOGY_END(vmx_topology)";
+      const blob = new Blob([config], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "vmm-config.conf";
+      a.click();
+    }
+
+    window.addEventListener('resize', updateLines);
+  </script>
+</body>
+</html>
